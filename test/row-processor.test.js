@@ -1,4 +1,4 @@
-const { processRow } = require("../lib/row-processor");
+const { processRow, typeIntoSegment } = require("../lib/row-processor");
 
 // jsdom implements document.execCommand as a no-op stub, but the real
 // browser genuinely mutates contenteditable text. Emulate that here so
@@ -117,6 +117,45 @@ function buildRow({ swapFieldsAfterFirstPeriod = false, timeOff = false } = {}) 
 
   return { row, icon, rangeCell };
 }
+
+describe("typeIntoSegment", () => {
+  test("retries when the DOM doesn't reflect the typed value on the first attempt", async () => {
+    const el = makeSegment("hours");
+    document.body.appendChild(el);
+
+    let insertCalls = 0;
+    document.execCommand = jest.fn((command, _showUI, value) => {
+      if (command === "insertText" && document.activeElement) {
+        insertCalls += 1;
+        // First attempt silently no-ops, simulating a stale-focus/re-render
+        // race where the edit never actually lands.
+        if (insertCalls > 1) {
+          document.activeElement.textContent = value;
+        }
+      }
+      return true;
+    });
+
+    await typeIntoSegment(el, "09", 1);
+
+    expect(el.textContent).toBe("09");
+    expect(insertCalls).toBe(2);
+  });
+
+  test("throws instead of silently continuing when the value never sticks after all attempts", async () => {
+    const el = makeSegment("hours");
+    document.body.appendChild(el);
+    document.execCommand = jest.fn(() => true); // insertText never updates textContent
+
+    await expect(typeIntoSegment(el, "09", 1, 3)).rejects.toThrow(/still shows/);
+  });
+
+  test("throws immediately (no retry) if the segment is no longer attached to the document", async () => {
+    const el = makeSegment("hours"); // never appended, so isConnected is false
+
+    await expect(typeIntoSegment(el, "09", 1)).rejects.toThrow(/removed from the page/);
+  });
+});
 
 describe("processRow", () => {
   test("fills all 4 period fields even when the framework swaps them out mid-row (regression for 'only fills the first one')", async () => {
