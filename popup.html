@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Personio Auto-Filler</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="app" id="app" data-state="idle">
+      <div class="ticket-edge" aria-hidden="true"></div>
+
+      <div class="app__content">
+        <header class="header">
+          <div class="header__brand">
+            <p class="header__eyebrow">Personio</p>
+            <h1 class="header__title">Auto&#8288;-Filler</h1>
+          </div>
+          <div class="statusdot" id="status-dot" role="img" aria-label="Idle">
+            <span class="statusdot__core"></span>
+          </div>
+        </header>
+
+        <div class="readout">
+          <div class="readout__display" aria-hidden="true">
+            <span class="readout__digitgroup">
+              <span class="readout__ghost">88</span>
+              <span class="readout__num" id="readout-fixed">--</span>
+            </span>
+            <span class="readout__sep">/</span>
+            <span class="readout__digitgroup">
+              <span class="readout__ghost">88</span>
+              <span class="readout__num" id="readout-total">--</span>
+            </span>
+          </div>
+          <p class="readout__caption" id="readout-caption">rows fixed / total</p>
+        </div>
+
+        <button id="run-button" class="run-button" type="button">
+          <span class="run-button__label">Run</span>
+          <span class="run-button__icon" aria-hidden="true">&#9656;</span>
+        </button>
+
+        <p id="status-line" class="status-line">Idle. Click Run to start.</p>
+
+        <ul id="skipped-list" class="skipped-list"></ul>
+      </div>
+    </div>
+    <script src="config.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

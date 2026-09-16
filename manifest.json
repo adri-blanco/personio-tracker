@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Personio Timesheet Auto-Filler",
+  "version": "0.1.0",
+  "description": "Automates filling missing period entries flagged by an alert icon on a Personio timesheet page.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Personio Auto-Filler"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["tabs", "scripting", "storage"],
+  "host_permissions": [
+    "https://*.personio.de/*",
+    "https://*.personio.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://*.personio.de/*", "https://*.personio.com/*"],
+      "js": ["config.js", "lib/time-utils.js", "lib/dom-utils.js", "lib/row-processor.js", "content/automation.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
