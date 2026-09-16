@@ -3,6 +3,7 @@ const {
   waitForElement,
   waitForNewElement,
   findRowScope,
+  isTimeOffRow,
   simulateClick,
   getTimeSegments,
   resolveRowElements,
@@ -105,6 +106,54 @@ describe("findRowScope", () => {
     const icon = document.querySelector('[data-test-id="alert-icon"]');
     const scope = findRowScope(icon, ['[data-test-id="time-range-cell"]'], 1);
     expect(scope).toBeNull();
+  });
+});
+
+describe("isTimeOffRow", () => {
+  const SELECTORS = {
+    TIME_RANGE_CELL: '[data-test-id="time-range-cell"]',
+    TIME_OFF_ICON: '[data-test-id="time-off-icon"]',
+  };
+
+  test("returns true when the row scope contains the time-off icon", () => {
+    document.body.innerHTML = `
+      <div id="row">
+        <span data-test-id="alert-icon"></span>
+        <div data-test-id="time-range-cell"></div>
+        <span data-test-id="time-off-icon"></span>
+      </div>
+    `;
+    const icon = document.querySelector('[data-test-id="alert-icon"]');
+    expect(isTimeOffRow(icon, SELECTORS, 8)).toBe(true);
+  });
+
+  test("returns false for a normal row without the time-off icon", () => {
+    document.body.innerHTML = `
+      <div id="row">
+        <span data-test-id="alert-icon"></span>
+        <div data-test-id="time-range-cell"></div>
+      </div>
+    `;
+    const icon = document.querySelector('[data-test-id="alert-icon"]');
+    expect(isTimeOffRow(icon, SELECTORS, 8)).toBe(false);
+  });
+
+  test("returns false when no row scope can be found at all", () => {
+    document.body.innerHTML = '<span data-test-id="alert-icon"></span>';
+    const icon = document.querySelector('[data-test-id="alert-icon"]');
+    expect(isTimeOffRow(icon, SELECTORS, 8)).toBe(false);
+  });
+
+  test("returns false when TIME_OFF_ICON selector isn't configured", () => {
+    document.body.innerHTML = `
+      <div id="row">
+        <span data-test-id="alert-icon"></span>
+        <div data-test-id="time-range-cell"></div>
+        <span data-test-id="time-off-icon"></span>
+      </div>
+    `;
+    const icon = document.querySelector('[data-test-id="alert-icon"]');
+    expect(isTimeOffRow(icon, { TIME_RANGE_CELL: SELECTORS.TIME_RANGE_CELL }, 8)).toBe(false);
   });
 });
 

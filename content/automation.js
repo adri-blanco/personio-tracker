@@ -5,7 +5,7 @@
   const CONFIG = self.PersonioConfig;
   const SEL = CONFIG.SELECTORS;
   const TIMEOUTS = CONFIG.TIMEOUTS;
-  const { waitForElement } = self.PersonioDomUtils;
+  const { waitForElement, isTimeOffRow } = self.PersonioDomUtils;
   const { processRow } = self.PersonioRowProcessor;
 
   function send(message) {
@@ -31,7 +31,11 @@
 
     // Snapshot once: icons stay visible even after a row is fixed, so we must
     // NOT re-query for "remaining" icons or the loop would never terminate.
-    const icons = Array.from(document.querySelectorAll(SEL.ALERT_ICON));
+    const allIcons = Array.from(document.querySelectorAll(SEL.ALERT_ICON));
+    // Time-off rows (vacation, sick leave, etc.) also carry an alert-icon,
+    // but are never auto-filled - exclude them upfront so the badge/popup
+    // total only reflects rows that will actually be processed.
+    const icons = allIcons.filter((icon) => !isTimeOffRow(icon, SEL, CONFIG.MAX_ROW_ANCESTOR_LEVELS));
     const total = icons.length;
     send({ type: "PERSONIO_AUTOFILLER_STATUS", state: "running", total });
 

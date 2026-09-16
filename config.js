@@ -19,10 +19,11 @@
       TIME_RANGE_CELL: '[class*="timeRangeColumn"]',
       // Rows for time-off (vacation, sick leave, etc.) also show an
       // alert-icon but must NOT be auto-filled like a regular missing-time
-      // row, so we skip any row whose scope contains this icon. Note the
-      // attribute is `data-testid` (no hyphen) here, unlike the other
-      // `data-test-id` selectors above - confirmed against the live page.
-      TIME_OFF_ICON: '[data-testid="time-off-icon"]',
+      // row, so we skip any row whose scope contains this icon. Confirmed
+      // against the live page: it's `data-test-id`, same convention as the
+      // other selectors above (previously assumed `data-testid`, which
+      // silently matched zero elements and let time-off rows through).
+      TIME_OFF_ICON: '[data-test-id="time-off-icon"]',
       SAVE_BUTTON: '[data-test-id="timecard-save-button"]',
       CANCEL_BUTTON: '[data-test-id="timecard-cancel-button"]',
       PERIODS: [

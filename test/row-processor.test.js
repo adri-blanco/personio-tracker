@@ -15,7 +15,7 @@ beforeEach(() => {
 
 const SELECTORS = {
   TIME_RANGE_CELL: '[data-test-id="time-range-cell"]',
-  TIME_OFF_ICON: '[data-testid="time-off-icon"]',
+  TIME_OFF_ICON: '[data-test-id="time-off-icon"]',
   SAVE_BUTTON: '[data-test-id="timecard-save-button"]',
   CANCEL_BUTTON: '[data-test-id="timecard-cancel-button"]',
   PERIODS: [
@@ -72,7 +72,7 @@ function buildRow({ swapFieldsAfterFirstPeriod = false, timeOff = false } = {}) 
   row.appendChild(rangeCell);
   if (timeOff) {
     const timeOffIcon = document.createElement("span");
-    timeOffIcon.setAttribute("data-testid", "time-off-icon");
+    timeOffIcon.setAttribute("data-test-id", "time-off-icon");
     row.appendChild(timeOffIcon);
   }
   document.body.appendChild(row);
