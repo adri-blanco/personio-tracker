@@ -7,8 +7,11 @@ const STORAGE_KEY = "personioAutoFillerLastRun";
 // simply try again instead of being locked out until storage is cleared.
 const CLICK_DEBOUNCE_MS = 2000;
 
+const CONFIG = self.PersonioConfig;
+
 const appEl = document.getElementById("app");
 const runButton = document.getElementById("run-button");
+const runCurrentTabButton = document.getElementById("run-current-tab-button");
 const statusDot = document.getElementById("status-dot");
 const statusLine = document.getElementById("status-line");
 const readoutFixed = document.getElementById("readout-fixed");
@@ -95,17 +98,40 @@ async function loadLastStatus() {
   renderStatus(data[STORAGE_KEY]);
 }
 
-runButton.addEventListener("click", () => {
-  runButton.disabled = true;
+// Only offer "Run on this tab" when the tab that's actually active *right
+// now* is already a Personio attendance/employee page - otherwise clicking
+// it would just fail in background.js, and showing it unconditionally would
+// be misleading (e.g. while the popup is open over some unrelated page).
+async function refreshCurrentTabButtonVisibility() {
+  let matches = false;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    matches = !!(tab && tab.url && CONFIG.ATTENDANCE_URL_PATTERN.test(tab.url));
+  } catch (err) {
+    matches = false;
+  }
+  runCurrentTabButton.hidden = !matches;
+}
+
+function triggerRun(message, button) {
+  button.disabled = true;
   setTimeout(() => {
-    runButton.disabled = false;
+    button.disabled = false;
   }, CLICK_DEBOUNCE_MS);
 
   appEl.dataset.state = "opening-tab";
   statusLine.textContent = "Starting...";
   readoutCaption.textContent = "starting up";
   skippedList.innerHTML = "";
-  chrome.runtime.sendMessage({ type: "PERSONIO_AUTOFILLER_RUN" });
+  chrome.runtime.sendMessage(message);
+}
+
+runButton.addEventListener("click", () => {
+  triggerRun({ type: "PERSONIO_AUTOFILLER_RUN" }, runButton);
+});
+
+runCurrentTabButton.addEventListener("click", () => {
+  triggerRun({ type: "PERSONIO_AUTOFILLER_RUN_CURRENT_TAB" }, runCurrentTabButton);
 });
 
 chrome.runtime.onMessage.addListener(() => {
@@ -115,3 +141,4 @@ chrome.runtime.onMessage.addListener(() => {
 });
 
 loadLastStatus();
+refreshCurrentTabButtonVisibility();

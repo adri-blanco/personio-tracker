@@ -50,17 +50,11 @@ function makePeriodField(testId) {
   return wrapper;
 }
 
-function readField(scope, testId) {
-  const wrapper = scope.querySelector(`[data-test-id="${testId}"]`);
-  const [hours, minutes] = wrapper.querySelectorAll('[role="spinbutton"]');
-  return `${hours.textContent}:${minutes.textContent}`;
-}
-
 // Builds the row (icon + clickable time-range cell) and, on click, opens a
 // panel containing the 4 period fields plus Save/Cancel buttons - mirroring
 // the real Personio page where the panel is a separate DOM subtree from the
 // row, appended asynchronously after the click.
-function buildRow({ swapFieldsAfterFirstPeriod = false, timeOff = false } = {}) {
+function buildRow({ swapFieldsAfterFirstPeriod = false, timeOff = false, cancelRemovalDelayMs = 0 } = {}) {
   document.body.innerHTML = "";
 
   const row = document.createElement("div");
@@ -91,6 +85,13 @@ function buildRow({ swapFieldsAfterFirstPeriod = false, timeOff = false } = {}) 
     panel.appendChild(cancelButton);
 
     document.body.appendChild(panel);
+
+    // Mirrors the real page: Cancel doesn't remove the panel from the DOM
+    // synchronously - it exits via an animation first (see the "waits for
+    // the panel to actually leave the DOM" test for why this matters).
+    cancelButton.addEventListener("click", () => {
+      setTimeout(() => panel.remove(), cancelRemovalDelayMs);
+    });
 
     if (swapFieldsAfterFirstPeriod) {
       // Simulate the framework re-rendering and swapping in brand new DOM
@@ -172,26 +173,22 @@ describe("processRow", () => {
       randomFn: () => 0,
     });
 
-    expect(result.filled.map((f) => f.key)).toEqual([
-      "periods.0.start",
-      "periods.0.end",
-      "periods.1.start",
-      "periods.1.end",
+    // Values are read from `result.filled` (captured live, mid-fill) rather
+    // than re-queried from the DOM after processRow returns: on a dry run
+    // the panel is now expected to be gone by then (see the "waits for the
+    // panel to actually leave the DOM" test), same as the real page.
+    expect(result.filled).toEqual([
+      { key: "periods.0.start", hours: "09", minutes: "00" },
+      { key: "periods.0.end", hours: "18", minutes: "00" },
+      { key: "periods.1.start", hours: "14", minutes: "00" },
+      { key: "periods.1.end", hours: "15", minutes: "00" },
     ]);
-
-    // Re-query live: if the fix regresses to caching elements upfront, these
-    // (now-swapped-in) live nodes would still show the placeholder "00:00".
-    const fieldsScope = document.querySelector('[data-test-id="periods.0.end"]').parentElement;
-    expect(readField(fieldsScope, "periods.0.start")).toBe("09:00");
-    expect(readField(fieldsScope, "periods.0.end")).toBe("18:00");
-    expect(readField(fieldsScope, "periods.1.start")).toBe("14:00");
-    expect(readField(fieldsScope, "periods.1.end")).toBe("15:00");
   });
 
   test("fills all 4 fields normally when nothing gets swapped out", async () => {
     const { icon } = buildRow();
 
-    await processRow({
+    const result = await processRow({
       icon,
       seenInputs: new Set(),
       selectors: SELECTORS,
@@ -202,17 +199,18 @@ describe("processRow", () => {
       randomFn: () => 0,
     });
 
-    const fieldsScope = document.querySelector('[data-test-id="periods.0.start"]').parentElement;
-    expect(readField(fieldsScope, "periods.0.start")).toBe("09:00");
-    expect(readField(fieldsScope, "periods.0.end")).toBe("18:00");
-    expect(readField(fieldsScope, "periods.1.start")).toBe("14:00");
-    expect(readField(fieldsScope, "periods.1.end")).toBe("15:00");
+    expect(result.filled).toEqual([
+      { key: "periods.0.start", hours: "09", minutes: "00" },
+      { key: "periods.0.end", hours: "18", minutes: "00" },
+      { key: "periods.1.start", hours: "14", minutes: "00" },
+      { key: "periods.1.end", hours: "15", minutes: "00" },
+    ]);
   });
 
   test("applies jitter on top of the configured base value", async () => {
     const { icon } = buildRow();
 
-    await processRow({
+    const result = await processRow({
       icon,
       seenInputs: new Set(),
       selectors: SELECTORS,
@@ -223,8 +221,7 @@ describe("processRow", () => {
       randomFn: () => 0.5, // Math.floor(0.5 * 31) === 15 minutes of jitter.
     });
 
-    const fieldsScope = document.querySelector('[data-test-id="periods.0.start"]').parentElement;
-    expect(readField(fieldsScope, "periods.0.start")).toBe("09:15");
+    expect(result.filled[0]).toEqual({ key: "periods.0.start", hours: "09", minutes: "15" });
   });
 
   test("dry run clicks Cancel and non-dry-run clicks Save", async () => {
@@ -266,6 +263,34 @@ describe("processRow", () => {
     const realRunResult = await run(false);
     expect(realRunResult.saveClicked).toHaveBeenCalledTimes(1);
     expect(realRunResult.cancelClicked).not.toHaveBeenCalled();
+  });
+
+  test("dry run waits for the panel to actually leave the DOM after Cancel before returning (regression for the next row racing this one's close animation)", async () => {
+    // Simulates the live page's ~360ms exit animation with a much shorter
+    // delay so the test stays fast, while still exercising the same race:
+    // if processRow returned as soon as Cancel was *clicked* (instead of
+    // waiting for the DOM to actually reflect it), content/automation.js's
+    // fixed BETWEEN_ROWS_DELAY_MS could open the next row before this one
+    // finished closing.
+    const { icon } = buildRow({ cancelRemovalDelayMs: 30 });
+
+    const before = Date.now();
+    await processRow({
+      icon,
+      seenInputs: new Set(),
+      selectors: SELECTORS,
+      timeouts: { ...TIMEOUTS, WAIT_FOR_ROW_INPUTS_MS: 500 },
+      maxRowAncestorLevels: 8,
+      jitterMaxMinutes: 0,
+      dryRun: true,
+      randomFn: () => 0,
+    });
+    const elapsed = Date.now() - before;
+
+    // Must have actually waited for the ~30ms removal, not resolved the
+    // instant Cancel was clicked.
+    expect(elapsed).toBeGreaterThanOrEqual(25);
+    expect(document.querySelector('[data-test-id="periods.0.start"]')).toBeNull();
   });
 
   test("throws when the time-range cell can't be found for the row", async () => {

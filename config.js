@@ -5,6 +5,14 @@
   const CONFIG = {
     TARGET_URL: "https://deus.app.personio.com/attendance/employee/20439319",
 
+    // Matches any Personio attendance/employee page regardless of employee id,
+    // query string (e.g. ?viewMode=monthly&startDate=...), or subdomain. Used
+    // by popup.js to decide when the "Run on this tab" button applies, and by
+    // background.js to validate the active tab before running the automation
+    // directly on it (preserving whatever month it's currently showing)
+    // instead of opening a fresh tab pinned to TARGET_URL's current month.
+    ATTENDANCE_URL_PATTERN: /^https:\/\/[^/]+\.personio\.(?:com|de)\/attendance\/employee\//,
+
     // While true: fills in the period fields but never clicks Save, so
     // nothing is persisted. Flip to false once you've verified the fills
     // look correct.

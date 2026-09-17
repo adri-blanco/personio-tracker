@@ -258,6 +258,41 @@ body {
   filter: none;
 }
 
+/* Secondary action (run on the already-open tab): visually subdued so it
+   never competes with the primary amber "Run" button. */
+.run-button--secondary {
+  margin-top: 8px;
+  color: var(--ivory);
+  background: transparent;
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+
+.run-button--secondary:hover {
+  filter: none;
+  border-color: var(--amber-deep);
+}
+
+.run-button--secondary:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.run-button--secondary:disabled {
+  color: var(--paper);
+  background: transparent;
+  border-color: var(--line);
+  box-shadow: none;
+  filter: none;
+}
+
+/* `.run-button` sets display:flex, which (being an author rule) otherwise
+   overrides the UA default `[hidden] { display: none }` - so this needs to
+   be explicit or the button would stay visible while "hidden". */
+.run-button[hidden] {
+  display: none;
+}
+
 .run-button__icon {
   font-size: 11px;
   transform: translateY(-1px);

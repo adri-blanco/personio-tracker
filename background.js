@@ -60,7 +60,10 @@ function armWatchdog(runId) {
   }, CONFIG.TIMEOUTS.MAX_RUN_MS);
 }
 
-async function startRun() {
+// Shared by startRun() and startRunOnCurrentTab(): initializes status/badge/
+// watchdog, resolves the target tab via `resolveTab` (which throws a
+// user-facing message on failure), then kicks off the content script on it.
+async function beginRun(resolveTab) {
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const status = {
     runId,
@@ -79,11 +82,10 @@ async function startRun() {
 
   let tab;
   try {
-    tab = await chrome.tabs.create({ url: CONFIG.TARGET_URL });
-    await waitForTabComplete(tab.id);
+    tab = await resolveTab();
   } catch (err) {
     status.state = "error";
-    status.error = "Could not open the target tab: " + String((err && err.message) || err);
+    status.error = String((err && err.message) || err);
     status.finishedAt = Date.now();
     await saveStatus(status);
     setBadge("!", "#d9534f");
@@ -96,11 +98,43 @@ async function startRun() {
   const started = await sendStartWithRetry(tab.id, 5, 400);
   if (!started) {
     status.state = "error";
-    status.error = "Could not reach the content script on the opened tab.";
+    status.error = "Could not reach the content script on the target tab.";
     status.finishedAt = Date.now();
     await saveStatus(status);
     setBadge("!", "#d9534f");
   }
+}
+
+// Default entry point: always opens a fresh tab pinned to CONFIG.TARGET_URL,
+// which shows the current month for the configured employee id.
+async function startRun() {
+  await beginRun(async () => {
+    let tab;
+    try {
+      tab = await chrome.tabs.create({ url: CONFIG.TARGET_URL });
+    } catch (err) {
+      throw new Error("Could not open the target tab: " + String((err && err.message) || err));
+    }
+    await waitForTabComplete(tab.id);
+    return tab;
+  });
+}
+
+// Runs on whatever Personio attendance/employee page is already open and
+// active in the current tab, preserving its current view (e.g. a past month
+// the user navigated to manually) instead of forcing back to TARGET_URL's
+// current month.
+async function startRunOnCurrentTab() {
+  await beginRun(async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id) {
+      throw new Error("Could not find the active tab.");
+    }
+    if (!tab.url || !CONFIG.ATTENDANCE_URL_PATTERN.test(tab.url)) {
+      throw new Error("The active tab is not a Personio attendance/employee page.");
+    }
+    return tab;
+  });
 }
 
 chrome.runtime.onMessage.addListener((message, sender) => {
@@ -108,6 +142,11 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 
   if (message.type === "PERSONIO_AUTOFILLER_RUN") {
     startRun();
+    return;
+  }
+
+  if (message.type === "PERSONIO_AUTOFILLER_RUN_CURRENT_TAB") {
+    startRunOnCurrentTab();
     return;
   }
 
