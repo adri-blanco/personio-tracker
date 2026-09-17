@@ -1,7 +1,7 @@
 import "./config.js";
 
 const CONFIG = self.PersonioConfig;
-const STORAGE_KEY = "personioAutoFillerLastRun";
+const STORAGE_KEY = CONFIG.STORAGE_KEY;
 
 function setBadge(text, color) {
   chrome.action.setBadgeText({ text: text || "" });
@@ -169,6 +169,10 @@ async function handleContentMessage(message) {
         ...prev,
         state: message.state,
         total: message.total ?? prev.total,
+        // Persisted so a later content-script instance (after a page
+        // reload triggered by a real Save - see content/automation.js's
+        // maybeResume) knows whether to keep resuming in dry-run or not.
+        dryRun: message.dryRun ?? prev.dryRun,
       });
       break;
     }
@@ -187,6 +191,7 @@ async function handleContentMessage(message) {
         fixed,
         skipped,
         skippedDetails,
+        dryRun: message.dryRun ?? prev.dryRun,
       };
       await saveStatus(next);
       setBadge(`${fixed}/${next.total}`, "#f0ad4e");

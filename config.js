@@ -16,7 +16,17 @@
     // While true: fills in the period fields but never clicks Save, so
     // nothing is persisted. Flip to false once you've verified the fills
     // look correct.
-    DRY_RUN: true,
+    DRY_RUN: false,
+
+    // Shared between background.js and content/automation.js. A real Save
+    // click can trigger Personio to reload/re-render the whole page (the
+    // in-flight content script instance simply dies, mid-loop, with no
+    // error - confirmed live: only the first row got filled+saved and the
+    // run silently stopped there). content/automation.js persists its
+    // progress under this key on every step and, on load, checks it to
+    // auto-resume a run that got cut short instead of waiting for a new
+    // START message that will never come.
+    STORAGE_KEY: "personioAutoFillerLastRun",
 
     SELECTORS: {
       ALERT_ICON: '[data-test-id="alert-icon"]',
@@ -58,8 +68,8 @@
     // Each period value gets a fresh random offset added, in the range
     // [0, JITTER_MAX_MINUTES] minutes, independently per field. E.g. with
     // 900 and a max of 30, the actual typed time is a random point between
-    // 09:00 and 09:30.
-    JITTER_MAX_MINUTES: 30,
+    // 09:00 and 09:15.
+    JITTER_MAX_MINUTES: 15,
 
     // How many ancestor levels to walk up from a newly found "periods.0.start"
     // input while looking for the smallest container that also holds the other
