@@ -54,7 +54,7 @@ function makePeriodField(testId) {
 // panel containing the 4 period fields plus Save/Cancel buttons - mirroring
 // the real Personio page where the panel is a separate DOM subtree from the
 // row, appended asynchronously after the click.
-function buildRow({ swapFieldsAfterFirstPeriod = false, timeOff = false, cancelRemovalDelayMs = 0 } = {}) {
+function buildRow({ swapFieldsAfterFirstPeriod = false, timeOff = false } = {}) {
   document.body.innerHTML = "";
 
   const row = document.createElement("div");
@@ -85,13 +85,6 @@ function buildRow({ swapFieldsAfterFirstPeriod = false, timeOff = false, cancelR
     panel.appendChild(cancelButton);
 
     document.body.appendChild(panel);
-
-    // Mirrors the real page: Cancel doesn't remove the panel from the DOM
-    // synchronously - it exits via an animation first (see the "waits for
-    // the panel to actually leave the DOM" test for why this matters).
-    cancelButton.addEventListener("click", () => {
-      setTimeout(() => panel.remove(), cancelRemovalDelayMs);
-    });
 
     if (swapFieldsAfterFirstPeriod) {
       // Simulate the framework re-rendering and swapping in brand new DOM
@@ -173,10 +166,6 @@ describe("processRow", () => {
       randomFn: () => 0,
     });
 
-    // Values are read from `result.filled` (captured live, mid-fill) rather
-    // than re-queried from the DOM after processRow returns: on a dry run
-    // the panel is now expected to be gone by then (see the "waits for the
-    // panel to actually leave the DOM" test), same as the real page.
     expect(result.filled).toEqual([
       { key: "periods.0.start", hours: "09", minutes: "00" },
       { key: "periods.0.end", hours: "18", minutes: "00" },
@@ -224,7 +213,7 @@ describe("processRow", () => {
     expect(result.filled[0]).toEqual({ key: "periods.0.start", hours: "09", minutes: "15" });
   });
 
-  test("dry run clicks Cancel and non-dry-run clicks Save", async () => {
+  test("dry run clicks neither Save nor Cancel, leaving the filled panel open; non-dry-run clicks Save", async () => {
     async function run(dryRun) {
       const { icon } = buildRow();
       // Listeners must be attached before the panel/buttons exist, so hook
@@ -256,41 +245,17 @@ describe("processRow", () => {
       return { saveClicked, cancelClicked };
     }
 
+    // Dry run: on purpose, don't click anything. The filled-but-unsaved
+    // values stay visible in the (still open) panel for inspection, and
+    // nothing gets written or discarded.
     const dryRunResult = await run(true);
-    expect(dryRunResult.cancelClicked).toHaveBeenCalledTimes(1);
     expect(dryRunResult.saveClicked).not.toHaveBeenCalled();
+    expect(dryRunResult.cancelClicked).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-test-id="periods.0.start"]')).not.toBeNull();
 
     const realRunResult = await run(false);
     expect(realRunResult.saveClicked).toHaveBeenCalledTimes(1);
     expect(realRunResult.cancelClicked).not.toHaveBeenCalled();
-  });
-
-  test("dry run waits for the panel to actually leave the DOM after Cancel before returning (regression for the next row racing this one's close animation)", async () => {
-    // Simulates the live page's ~360ms exit animation with a much shorter
-    // delay so the test stays fast, while still exercising the same race:
-    // if processRow returned as soon as Cancel was *clicked* (instead of
-    // waiting for the DOM to actually reflect it), content/automation.js's
-    // fixed BETWEEN_ROWS_DELAY_MS could open the next row before this one
-    // finished closing.
-    const { icon } = buildRow({ cancelRemovalDelayMs: 30 });
-
-    const before = Date.now();
-    await processRow({
-      icon,
-      seenInputs: new Set(),
-      selectors: SELECTORS,
-      timeouts: { ...TIMEOUTS, WAIT_FOR_ROW_INPUTS_MS: 500 },
-      maxRowAncestorLevels: 8,
-      jitterMaxMinutes: 0,
-      dryRun: true,
-      randomFn: () => 0,
-    });
-    const elapsed = Date.now() - before;
-
-    // Must have actually waited for the ~30ms removal, not resolved the
-    // instant Cancel was clicked.
-    expect(elapsed).toBeGreaterThanOrEqual(25);
-    expect(document.querySelector('[data-test-id="periods.0.start"]')).toBeNull();
   });
 
   test("throws when the time-range cell can't be found for the row", async () => {
