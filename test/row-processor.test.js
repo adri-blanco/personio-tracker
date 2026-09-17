@@ -1,4 +1,4 @@
-const { processRow, typeIntoSegment } = require("../lib/row-processor");
+const { fillRow, saveRow, typeIntoSegment } = require("../lib/row-processor");
 
 // jsdom implements document.execCommand as a no-op stub, but the real
 // browser genuinely mutates contenteditable text. Emulate that here so
@@ -151,18 +151,17 @@ describe("typeIntoSegment", () => {
   });
 });
 
-describe("processRow", () => {
+describe("fillRow", () => {
   test("fills all 4 period fields even when the framework swaps them out mid-row (regression for 'only fills the first one')", async () => {
     const { icon } = buildRow({ swapFieldsAfterFirstPeriod: true });
 
-    const result = await processRow({
+    const result = await fillRow({
       icon,
       seenInputs: new Set(),
       selectors: SELECTORS,
       timeouts: TIMEOUTS,
       maxRowAncestorLevels: 8,
       jitterMaxMinutes: 0,
-      dryRun: true,
       randomFn: () => 0,
     });
 
@@ -177,14 +176,13 @@ describe("processRow", () => {
   test("fills all 4 fields normally when nothing gets swapped out", async () => {
     const { icon } = buildRow();
 
-    const result = await processRow({
+    const result = await fillRow({
       icon,
       seenInputs: new Set(),
       selectors: SELECTORS,
       timeouts: TIMEOUTS,
       maxRowAncestorLevels: 8,
       jitterMaxMinutes: 0,
-      dryRun: true,
       randomFn: () => 0,
     });
 
@@ -199,63 +197,46 @@ describe("processRow", () => {
   test("applies jitter on top of the configured base value", async () => {
     const { icon } = buildRow();
 
-    const result = await processRow({
+    const result = await fillRow({
       icon,
       seenInputs: new Set(),
       selectors: SELECTORS,
       timeouts: TIMEOUTS,
       maxRowAncestorLevels: 8,
       jitterMaxMinutes: 30,
-      dryRun: true,
       randomFn: () => 0.5, // Math.floor(0.5 * 31) === 15 minutes of jitter.
     });
 
     expect(result.filled[0]).toEqual({ key: "periods.0.start", hours: "09", minutes: "15" });
   });
 
-  test("dry run clicks neither Save nor Cancel, leaving the filled panel open; non-dry-run clicks Save", async () => {
-    async function run(dryRun) {
-      const { icon } = buildRow();
-      // Listeners must be attached before the panel/buttons exist, so hook
-      // into the row's click to attach button listeners right after the
-      // panel is created (a microtask later, once processRow clicks it).
-      const original = icon.parentElement.querySelector('[data-test-id="time-range-cell"]');
-      const saveClicked = jest.fn();
-      const cancelClicked = jest.fn();
-      original.addEventListener("click", () => {
-        setTimeout(() => {
-          const save = document.querySelector('[data-test-id="timecard-save-button"]');
-          const cancel = document.querySelector('[data-test-id="timecard-cancel-button"]');
-          if (save) save.addEventListener("click", saveClicked);
-          if (cancel) cancel.addEventListener("click", cancelClicked);
-        }, 0);
-      });
+  test("never clicks Save or Cancel, leaving the filled panel open for a later saveRow() call", async () => {
+    const { icon } = buildRow();
+    const original = icon.parentElement.querySelector('[data-test-id="time-range-cell"]');
+    const saveClicked = jest.fn();
+    const cancelClicked = jest.fn();
+    // Listeners must be attached after the panel/buttons exist, so hook in
+    // right after the row's own click handler (which creates them) runs.
+    original.addEventListener("click", () => {
+      setTimeout(() => {
+        document.querySelector('[data-test-id="timecard-save-button"]').addEventListener("click", saveClicked);
+        document.querySelector('[data-test-id="timecard-cancel-button"]').addEventListener("click", cancelClicked);
+      }, 0);
+    });
 
-      await processRow({
-        icon,
-        seenInputs: new Set(),
-        selectors: SELECTORS,
-        timeouts: TIMEOUTS,
-        maxRowAncestorLevels: 8,
-        jitterMaxMinutes: 0,
-        dryRun,
-        randomFn: () => 0,
-      });
+    await fillRow({
+      icon,
+      seenInputs: new Set(),
+      selectors: SELECTORS,
+      timeouts: TIMEOUTS,
+      maxRowAncestorLevels: 8,
+      jitterMaxMinutes: 0,
+      randomFn: () => 0,
+    });
 
-      return { saveClicked, cancelClicked };
-    }
-
-    // Dry run: on purpose, don't click anything. The filled-but-unsaved
-    // values stay visible in the (still open) panel for inspection, and
-    // nothing gets written or discarded.
-    const dryRunResult = await run(true);
-    expect(dryRunResult.saveClicked).not.toHaveBeenCalled();
-    expect(dryRunResult.cancelClicked).not.toHaveBeenCalled();
+    expect(saveClicked).not.toHaveBeenCalled();
+    expect(cancelClicked).not.toHaveBeenCalled();
     expect(document.querySelector('[data-test-id="periods.0.start"]')).not.toBeNull();
-
-    const realRunResult = await run(false);
-    expect(realRunResult.saveClicked).toHaveBeenCalledTimes(1);
-    expect(realRunResult.cancelClicked).not.toHaveBeenCalled();
   });
 
   test("throws when the time-range cell can't be found for the row", async () => {
@@ -265,14 +246,13 @@ describe("processRow", () => {
     document.body.appendChild(icon);
 
     await expect(
-      processRow({
+      fillRow({
         icon,
         seenInputs: new Set(),
         selectors: SELECTORS,
         timeouts: TIMEOUTS,
         maxRowAncestorLevels: 8,
         jitterMaxMinutes: 0,
-        dryRun: true,
         randomFn: () => 0,
       })
     ).rejects.toThrow(/time-range cell/);
@@ -284,14 +264,13 @@ describe("processRow", () => {
     rangeCell.addEventListener("click", clicked);
 
     await expect(
-      processRow({
+      fillRow({
         icon,
         seenInputs: new Set(),
         selectors: SELECTORS,
         timeouts: TIMEOUTS,
         maxRowAncestorLevels: 8,
         jitterMaxMinutes: 0,
-        dryRun: true,
         randomFn: () => 0,
       })
     ).rejects.toThrow(/time-off/);
@@ -306,17 +285,125 @@ describe("processRow", () => {
     // Pre-populate seenInputs with what will become the *next* click's
     // periods.0.start, by processing once first.
     const seenInputs = new Set();
-    await processRow({
+    await fillRow({
       icon,
       seenInputs,
       selectors: SELECTORS,
       timeouts: TIMEOUTS,
       maxRowAncestorLevels: 8,
       jitterMaxMinutes: 0,
-      dryRun: true,
       randomFn: () => 0,
     });
 
     expect(seenInputs.size).toBe(4);
+  });
+});
+
+describe("saveRow", () => {
+  test("re-applies fillRow's exact values (no re-jittering) and clicks Save, never Cancel", async () => {
+    const { icon } = buildRow();
+    const original = icon.parentElement.querySelector('[data-test-id="time-range-cell"]');
+    const saveClicked = jest.fn();
+    const cancelClicked = jest.fn();
+    original.addEventListener("click", () => {
+      setTimeout(() => {
+        document.querySelector('[data-test-id="timecard-save-button"]').addEventListener("click", saveClicked);
+        document.querySelector('[data-test-id="timecard-cancel-button"]').addEventListener("click", cancelClicked);
+      }, 0);
+    });
+
+    const seenInputs = new Set();
+    const { filled, startInput } = await fillRow({
+      icon,
+      seenInputs,
+      selectors: SELECTORS,
+      timeouts: TIMEOUTS,
+      maxRowAncestorLevels: 8,
+      jitterMaxMinutes: 30,
+      randomFn: () => 0.5, // 15 minutes of jitter on every field.
+    });
+
+    await saveRow({
+      icon,
+      filled,
+      startInput,
+      seenInputs,
+      selectors: SELECTORS,
+      timeouts: TIMEOUTS,
+      maxRowAncestorLevels: 8,
+    });
+
+    expect(saveClicked).toHaveBeenCalledTimes(1);
+    expect(cancelClicked).not.toHaveBeenCalled();
+
+    // Values on screen after saveRow must still match exactly what fillRow
+    // decided - proving saveRow re-typed the *remembered* values rather
+    // than re-jittering with a fresh random draw.
+    const fieldsScope = document.querySelector('[data-test-id="periods.0.start"]').parentElement;
+    filled.forEach(({ key, hours, minutes }) => {
+      const wrapper = fieldsScope.querySelector(`[data-test-id="${key}"]`);
+      const [hoursEl, minutesEl] = wrapper.querySelectorAll('[role="spinbutton"]');
+      expect(hoursEl.textContent).toBe(hours);
+      expect(minutesEl.textContent).toBe(minutes);
+    });
+  });
+
+  test("re-opens and re-fills the row if its panel was closed/reset since fillRow (regression for a real Save elsewhere resetting other open rows)", async () => {
+    const { icon } = buildRow();
+
+    const seenInputs = new Set();
+    const { filled, startInput } = await fillRow({
+      icon,
+      seenInputs,
+      selectors: SELECTORS,
+      timeouts: TIMEOUTS,
+      maxRowAncestorLevels: 8,
+      jitterMaxMinutes: 0,
+      randomFn: () => 0,
+    });
+
+    // Simulate the panel having been closed/reset (e.g. by a table-wide
+    // re-render triggered by another row's real Save) before this row's
+    // turn to save comes up.
+    document.querySelector('[data-test-id="periods.0.start"]').closest("div").parentElement.remove();
+    expect(document.querySelector('[data-test-id="periods.0.start"]')).toBeNull();
+    expect(startInput.isConnected).toBe(false);
+
+    await saveRow({
+      icon,
+      filled,
+      startInput,
+      seenInputs,
+      selectors: SELECTORS,
+      timeouts: TIMEOUTS,
+      maxRowAncestorLevels: 8,
+    });
+
+    // The panel is open again (re-opened by saveRow) with the same values.
+    const fieldsScope = document.querySelector('[data-test-id="periods.0.start"]').parentElement;
+    filled.forEach(({ key, hours, minutes }) => {
+      const wrapper = fieldsScope.querySelector(`[data-test-id="${key}"]`);
+      const [hoursEl, minutesEl] = wrapper.querySelectorAll('[role="spinbutton"]');
+      expect(hoursEl.textContent).toBe(hours);
+      expect(minutesEl.textContent).toBe(minutes);
+    });
+  });
+
+  test("throws if the Save button can't be found", async () => {
+    document.body.innerHTML = "";
+    const icon = document.createElement("span");
+    icon.setAttribute("data-test-id", "alert-icon");
+    document.body.appendChild(icon);
+
+    await expect(
+      saveRow({
+        icon,
+        filled: [],
+        seenInputs: new Set(),
+        selectors: SELECTORS,
+        timeouts: TIMEOUTS,
+        maxRowAncestorLevels: 8,
+      })
+    ).rejects.toThrow(/time-range cell/);
   });
 });

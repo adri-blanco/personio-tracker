@@ -57,6 +57,11 @@
       WAIT_FOR_ROW_INPUTS_MS: 5000,
       POLL_INTERVAL_MS: 150,
       BETWEEN_ROWS_DELAY_MS: 250,
+      // Delay between each row's Save click during the batch-save phase
+      // (all rows are filled first, then saved one by one) - deliberately
+      // longer than BETWEEN_ROWS_DELAY_MS so we don't hammer the save
+      // endpoint, per explicit request.
+      BETWEEN_SAVES_DELAY_MS: 1000,
       TYPE_CHAR_DELAY_MS: 15,
       // Safety net: if a run is still "in progress" this long after starting
       // (e.g. the content script died silently, or the page navigated away),

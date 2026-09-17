@@ -41,7 +41,7 @@ function renderStatus(status) {
     return;
   }
 
-  const { state, total = 0, fixed = 0, skipped = 0, skippedDetails = [], error, dryRun } = status;
+  const { state, total = 0, fixed = 0, skipped = 0, skippedDetails = [], error, dryRun, phase } = status;
 
   appEl.dataset.state = cssState(status);
 
@@ -56,11 +56,13 @@ function renderStatus(status) {
       statusLine.textContent = "Waiting for alert icons to appear...";
       readoutCaption.textContent = "starting up";
       break;
-    case "running":
+    case "running": {
+      const phaseLabel = phase === "saving" ? "saving" : "filling";
       statusDot.setAttribute("aria-label", "Running");
-      statusLine.textContent = `Running: ${fixed + skipped}/${total} processed (fixed ${fixed}, skipped ${skipped})`;
-      readoutCaption.textContent = "live \u00b7 filling rows";
+      statusLine.textContent = `Running (${phaseLabel}): ${fixed + skipped}/${total} processed (fixed ${fixed}, skipped ${skipped})`;
+      readoutCaption.textContent = `live \u00b7 ${phaseLabel} rows`;
       break;
+    }
     case "done":
       statusDot.setAttribute("aria-label", dryRun ? "Dry run done" : "Done");
       statusLine.textContent = dryRun

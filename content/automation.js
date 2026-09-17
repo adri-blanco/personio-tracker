@@ -9,7 +9,19 @@
   const TIMEOUTS = CONFIG.TIMEOUTS;
   const STORAGE_KEY = CONFIG.STORAGE_KEY;
   const { waitForElement, isTimeOffRow } = self.PersonioDomUtils;
-  const { processRow } = self.PersonioRowProcessor;
+  const { fillRow, saveRow } = self.PersonioRowProcessor;
+
+  // Re-resolves the alert-icon list live from the DOM, applying the same
+  // time-off filter as the initial snapshot. Used to fetch a fresh, still-
+  // connected reference for a given row index instead of trusting a
+  // reference captured earlier - see the call sites below for why that
+  // matters.
+  function currentIconAt(index, fallbackIcons) {
+    const currentIcons = Array.from(document.querySelectorAll(SEL.ALERT_ICON)).filter(
+      (candidate) => !isTimeOffRow(candidate, SEL, CONFIG.MAX_ROW_ANCESTOR_LEVELS)
+    );
+    return currentIcons[index] || fallbackIcons[index];
+  }
 
   function send(message) {
     try {
@@ -74,41 +86,48 @@
     // the popup's "x/total" reflects the whole logical run.
     const total = isResuming ? Math.max(resumeState.total, fixed + skipped + icons.length) : icons.length;
 
-    send({ type: "PERSONIO_AUTOFILLER_STATUS", state: "running", total, dryRun });
+    // Stable row-number base for progress messages across both phases below
+    // (equal to how many rows a resumed run already accounted for, or 0 on a
+    // fresh run) - computed once, since `fixed`/`skipped` themselves get
+    // mutated as each phase runs and would no longer line up with a given
+    // row's original position in `icons` otherwise.
+    const initialOffset = fixed + skipped;
+
+    send({ type: "PERSONIO_AUTOFILLER_STATUS", state: "running", total, dryRun, phase: "filling" });
 
     const seenInputs = new Set();
+    // Rows that filled successfully and (on a real run) still need Save
+    // clicked - deferred to the second phase below instead of saving
+    // immediately after each fill.
+    const queuedForSave = [];
 
     for (let i = 0; i < icons.length; i += 1) {
       // Re-resolve the icon fresh right before use instead of trusting the
-      // initial snapshot: a real (non-dry-run) Save can make Personio
-      // re-render the whole table with brand-new DOM nodes for every row -
-      // even though the count/order of alert-icons itself stays stable
-      // across that (see the snapshot comment above) - which silently
-      // detaches whatever reference we captured upfront. Confirmed live:
-      // reusing the stale `icons[i]` reference made the click land on a
-      // disconnected, do-nothing node, so that row's panel never actually
-      // opened and the run reported "period inputs did not appear" for
-      // every row after the first real save instead of continuing to fill
-      // them. Falls back to the original snapshot reference if a fresh
-      // requery ever comes up short, rather than skipping the row outright.
-      const currentIcons = Array.from(document.querySelectorAll(SEL.ALERT_ICON)).filter(
-        (candidate) => !isTimeOffRow(candidate, SEL, CONFIG.MAX_ROW_ANCESTOR_LEVELS)
-      );
-      const icon = currentIcons[i] || icons[i];
-      const index = fixed + skipped; // global position across the whole run, resumes included
+      // initial snapshot: Personio can re-render a row's DOM between when
+      // icons were snapshotted and when we get to it here, which would
+      // silently detach a stale reference. Falls back to the original
+      // snapshot reference if a fresh requery ever comes up short, rather
+      // than skipping the row outright.
+      const icon = currentIconAt(i, icons);
+      const index = initialOffset + i;
       try {
-        await processRow({
+        const { filled, startInput } = await fillRow({
           icon,
           seenInputs,
           selectors: SEL,
           timeouts: TIMEOUTS,
           maxRowAncestorLevels: CONFIG.MAX_ROW_ANCESTOR_LEVELS,
           jitterMaxMinutes: CONFIG.JITTER_MAX_MINUTES,
-          dryRun,
         });
 
-        fixed += 1;
-        send({ type: "PERSONIO_AUTOFILLER_PROGRESS", index, total, result: "fixed", dryRun });
+        if (dryRun) {
+          // Nothing left to do: the panel stays open, filled but unsaved,
+          // for inspection.
+          fixed += 1;
+          send({ type: "PERSONIO_AUTOFILLER_PROGRESS", index, total, result: "fixed", dryRun });
+        } else {
+          queuedForSave.push({ i, filled, startInput });
+        }
       } catch (err) {
         skipped += 1;
         const reason = String((err && err.message) || err);
@@ -117,6 +136,39 @@
       }
 
       await sleep(TIMEOUTS.BETWEEN_ROWS_DELAY_MS);
+    }
+
+    // Phase 2 (real runs only): every row is already filled at this point,
+    // so click Save on each one in turn with a short fixed delay between
+    // clicks - instead of paying a multi-second "let Personio settle" wait
+    // after every single row, which is what made a full run slow.
+    if (!dryRun && queuedForSave.length > 0) {
+      send({ type: "PERSONIO_AUTOFILLER_STATUS", state: "running", total, dryRun, phase: "saving" });
+
+      for (const { i, filled, startInput } of queuedForSave) {
+        const icon = currentIconAt(i, icons);
+        const index = initialOffset + i;
+        try {
+          await saveRow({
+            icon,
+            filled,
+            startInput,
+            seenInputs,
+            selectors: SEL,
+            timeouts: TIMEOUTS,
+            maxRowAncestorLevels: CONFIG.MAX_ROW_ANCESTOR_LEVELS,
+          });
+          fixed += 1;
+          send({ type: "PERSONIO_AUTOFILLER_PROGRESS", index, total, result: "fixed", dryRun });
+        } catch (err) {
+          skipped += 1;
+          const reason = String((err && err.message) || err);
+          skippedDetails.push({ index, reason });
+          send({ type: "PERSONIO_AUTOFILLER_PROGRESS", index, total, result: "skipped", reason, dryRun });
+        }
+
+        await sleep(TIMEOUTS.BETWEEN_SAVES_DELAY_MS);
+      }
     }
 
     send({ type: "PERSONIO_AUTOFILLER_DONE", total, fixed, skipped, skippedDetails, dryRun });
