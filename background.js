@@ -16,7 +16,10 @@ async function getStatus() {
 }
 
 async function saveStatus(status) {
-  await chrome.storage.local.set({ [STORAGE_KEY]: status });
+  // Stamped on every write so content/automation.js's maybeResume() can
+  // tell a genuinely-just-interrupted run apart from a long-abandoned one
+  // sitting in storage - see RESUME_STALE_AFTER_MS in config.js.
+  await chrome.storage.local.set({ [STORAGE_KEY]: { ...status, updatedAt: Date.now() } });
 }
 
 function waitForTabComplete(tabId) {
@@ -173,9 +176,6 @@ async function handleContentMessage(message) {
         // reload triggered by a real Save - see content/automation.js's
         // maybeResume) knows whether to keep resuming in dry-run or not.
         dryRun: message.dryRun ?? prev.dryRun,
-        // "filling" or "saving" - which of the two batch phases a "running"
-        // status refers to. Only meaningful while state is "running".
-        phase: message.phase ?? prev.phase,
       });
       break;
     }

@@ -41,7 +41,7 @@ function renderStatus(status) {
     return;
   }
 
-  const { state, total = 0, fixed = 0, skipped = 0, skippedDetails = [], error, dryRun, phase } = status;
+  const { state, total = 0, fixed = 0, skipped = 0, skippedDetails = [], error, dryRun } = status;
 
   appEl.dataset.state = cssState(status);
 
@@ -57,10 +57,9 @@ function renderStatus(status) {
       readoutCaption.textContent = "starting up";
       break;
     case "running": {
-      const phaseLabel = phase === "saving" ? "saving" : "filling";
       statusDot.setAttribute("aria-label", "Running");
-      statusLine.textContent = `Running (${phaseLabel}): ${fixed + skipped}/${total} processed (fixed ${fixed}, skipped ${skipped})`;
-      readoutCaption.textContent = `live \u00b7 ${phaseLabel} rows`;
+      statusLine.textContent = `Running: ${fixed + skipped}/${total} processed (fixed ${fixed}, skipped ${skipped})`;
+      readoutCaption.textContent = "live \u00b7 processing rows";
       break;
     }
     case "done":

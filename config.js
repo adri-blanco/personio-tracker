@@ -44,6 +44,11 @@
       TIME_OFF_ICON: '[data-test-id="time-off-icon"]',
       SAVE_BUTTON: '[data-test-id="timecard-save-button"]',
       CANCEL_BUTTON: '[data-test-id="timecard-cancel-button"]',
+      // Delete button for the 3rd/extra period that occasionally appears
+      // alongside the 2 we configure (cause not fully understood - see the
+      // recovery logic in lib/row-processor.js). Confirmed live: always
+      // this exact index, since the extra period is always the last one.
+      DELETE_EXTRA_PERIOD_BUTTON: '[data-test-id="timecard-delete-period-2"]',
       PERIODS: [
         { key: "periods.0.start", selector: '[data-test-id="periods.0.start"]', value: "900" },
         { key: "periods.0.end", selector: '[data-test-id="periods.0.end"]', value: "1800" },
@@ -54,20 +59,47 @@
 
     TIMEOUTS: {
       WAIT_FOR_FIRST_ALERT_ICON_MS: 15000,
-      WAIT_FOR_ROW_INPUTS_MS: 5000,
+      // Used for: waiting for a row's fields to appear when opened, waiting
+      // for each field to be ready to fill, and (real runs only) waiting
+      // for a row's fields to disappear after Save to confirm it actually
+      // persisted. 5s wasn't always enough live on a real save (which
+      // involves an actual server round-trip, not just a local re-render)
+      // - confirmed by "row fields did not disappear after Save" and
+      // "period inputs did not appear" errors appearing more often later
+      // in a long run, consistent with the page getting slower under
+      // load rather than those steps genuinely never finishing. Since
+      // waitFor() resolves as soon as its condition is met, a more
+      // generous ceiling here costs nothing in the normal/fast case.
+      WAIT_FOR_ROW_INPUTS_MS: 12000,
       POLL_INTERVAL_MS: 150,
+      // Applied after every row (fixed or skipped) before opening the next
+      // one - each row's own processRow() already waits for its fields to
+      // actually leave the DOM after Save, so this is just a small extra
+      // buffer, not the thing doing the real waiting.
       BETWEEN_ROWS_DELAY_MS: 250,
-      // Delay between each row's Save click during the batch-save phase
-      // (all rows are filled first, then saved one by one) - deliberately
-      // longer than BETWEEN_ROWS_DELAY_MS so we don't hammer the save
-      // endpoint, per explicit request.
-      BETWEEN_SAVES_DELAY_MS: 1000,
       TYPE_CHAR_DELAY_MS: 15,
+      // content/automation.js's maybeResume() only auto-continues a
+      // "running" status found in storage if it was updated more recently
+      // than this. A real Save can reload the page mid-run, which this is
+      // meant to survive, and that reload+re-inject+re-run cycle normally
+      // completes within a few seconds - so anything older than this is
+      // treated as an abandoned/stuck run (e.g. the tab got closed mid-run,
+      // or something died without reporting) rather than a genuine
+      // continuation, and is left alone instead of auto-starting. Without
+      // this, background.js's service worker gets killed by Chrome for
+      // being idle long before MAX_RUN_MS's watchdog setTimeout below ever
+      // fires (MV3 service workers don't survive idle for minutes), so a
+      // stuck "running" status could otherwise sit in storage forever and
+      // silently auto-start a run on any later, unrelated visit to the
+      // attendance page.
+      RESUME_STALE_AFTER_MS: 30000,
       // Safety net: if a run is still "in progress" this long after starting
       // (e.g. the content script died silently, or the page navigated away),
       // background.js marks it as timed-out so the popup's Run button never
-      // stays locked forever.
-      MAX_RUN_MS: 5 * 60 * 1000,
+      // stays locked forever. Bumped alongside WAIT_FOR_ROW_INPUTS_MS above
+      // so a long run of genuinely-slow (not stuck) rows doesn't get
+      // mistaken for one that died.
+      MAX_RUN_MS: 10 * 60 * 1000,
     },
 
     // Each period value gets a fresh random offset added, in the range
