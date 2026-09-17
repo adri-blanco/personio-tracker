@@ -19,7 +19,7 @@
   "content_scripts": [
     {
       "matches": ["https://*.personio.de/*", "https://*.personio.com/*"],
-      "js": ["config.js", "lib/time-utils.js", "lib/dom-utils.js", "lib/row-processor.js", "content/automation.js"],
+      "js": ["config.js", "config.local.js", "lib/time-utils.js", "lib/dom-utils.js", "lib/row-processor.js", "content/automation.js"],
       "run_at": "document_idle"
     }
   ]

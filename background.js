@@ -1,4 +1,12 @@
 import "./config.js";
+// Must be imported explicitly (unlike popup.html/manifest.json's
+// content_scripts, where plain <script>/array load order is enough to share
+// globals) - this is an ES module service worker, so each file needs its
+// own import statement to run at all. Overrides CONFIG.TARGET_URL (see
+// config.local.js and README.md's Installation section) - without this,
+// background.js would silently keep using config.js's blank/placeholder
+// TARGET_URL no matter what's set in config.local.js.
+import "./config.local.js";
 
 const CONFIG = self.PersonioConfig;
 const STORAGE_KEY = CONFIG.STORAGE_KEY;
@@ -112,6 +120,23 @@ async function beginRun(resolveTab) {
 // which shows the current month for the configured employee id.
 async function startRun() {
   await beginRun(async () => {
+    // Blank by default (see config.js) until set in config.local.js, which
+    // is never meant to be committed with a real value - so this is the
+    // expected state right after cloning the repo, not a bug.
+    if (!CONFIG.TARGET_URL) {
+      throw new Error(
+        'No TARGET_URL configured. Set it in config.local.js (see README.md\'s Installation section), or use "Run on this tab" instead.'
+      );
+    }
+    // Catches copy-pasting config.local.js's own example line without
+    // replacing the <placeholder> parts - a real Personio URL never
+    // contains "<"/">", so this is unambiguous, and gives a much clearer
+    // message than the "Invalid url" chrome.tabs.create() would throw.
+    if (CONFIG.TARGET_URL.includes("<") || CONFIG.TARGET_URL.includes(">")) {
+      throw new Error(
+        `TARGET_URL in config.local.js still contains a <placeholder> ("${CONFIG.TARGET_URL}") - replace it with your real attendance URL (see README.md's Installation section).`
+      );
+    }
     let tab;
     try {
       tab = await chrome.tabs.create({ url: CONFIG.TARGET_URL });

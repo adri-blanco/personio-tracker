@@ -1,9 +1,15 @@
 // Shared configuration for background.js, content/automation.js and popup.js.
-// Edit TARGET_URL (and host_permissions / content_scripts matches in manifest.json
-// if your Personio subdomain differs) before loading the extension.
+// TARGET_URL is deliberately left blank here - it's personal to each user
+// (their company's subdomain + their own employee id) and must NEVER be
+// committed with a real value. Set it in config.local.js instead (loaded
+// right after this file - see README.md's Installation section), which is
+// designed so your personal value never shows up as a change to commit.
+// (host_permissions / content_scripts matches in manifest.json only need a
+// manual edit if your Personio domain isn't under personio.com/personio.de
+// at all.)
 (function () {
   const CONFIG = {
-    TARGET_URL: "https://deus.app.personio.com/attendance/employee/20439319",
+    TARGET_URL: "https://<your-company>.personio.com/attendance/employee/<your-employee-id>",
 
     // Matches any Personio attendance/employee page regardless of employee id,
     // query string (e.g. ?viewMode=monthly&startDate=...), or subdomain. Used
