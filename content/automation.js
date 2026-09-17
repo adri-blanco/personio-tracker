@@ -79,7 +79,22 @@
     const seenInputs = new Set();
 
     for (let i = 0; i < icons.length; i += 1) {
-      const icon = icons[i];
+      // Re-resolve the icon fresh right before use instead of trusting the
+      // initial snapshot: a real (non-dry-run) Save can make Personio
+      // re-render the whole table with brand-new DOM nodes for every row -
+      // even though the count/order of alert-icons itself stays stable
+      // across that (see the snapshot comment above) - which silently
+      // detaches whatever reference we captured upfront. Confirmed live:
+      // reusing the stale `icons[i]` reference made the click land on a
+      // disconnected, do-nothing node, so that row's panel never actually
+      // opened and the run reported "period inputs did not appear" for
+      // every row after the first real save instead of continuing to fill
+      // them. Falls back to the original snapshot reference if a fresh
+      // requery ever comes up short, rather than skipping the row outright.
+      const currentIcons = Array.from(document.querySelectorAll(SEL.ALERT_ICON)).filter(
+        (candidate) => !isTimeOffRow(candidate, SEL, CONFIG.MAX_ROW_ANCESTOR_LEVELS)
+      );
+      const icon = currentIcons[i] || icons[i];
       const index = fixed + skipped; // global position across the whole run, resumes included
       try {
         await processRow({
