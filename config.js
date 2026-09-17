@@ -112,6 +112,17 @@
     // input while looking for the smallest container that also holds the other
     // 3 period inputs for that same row.
     MAX_ROW_ANCESTOR_LEVELS: 8,
+
+    // After a full sweep of rows finishes, content/automation.js re-scans the
+    // page for any alert-icon rows still left (rows that failed and are
+    // still flagged, or ones that simply weren't there yet on an earlier
+    // scan) and, if it finds any, runs another sweep over just those - up to
+    // this many sweeps total - instead of stopping and reporting them as
+    // permanently skipped after only one attempt. Capped rather than
+    // unbounded so a row that's genuinely, permanently broken (e.g. real
+    // corrupted day data) can't retry forever; MAX_RUN_MS above is the
+    // other backstop for that.
+    MAX_RETRY_PASSES: 3,
   };
 
   self.PersonioConfig = CONFIG;

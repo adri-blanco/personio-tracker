@@ -13,11 +13,15 @@ Stop babysitting your timesheet. This Chrome extension scans your Personio atten
 
 ## 📦 Installation
 
-1. Clone or download this repo.
-2. Open Chrome and go to `chrome://extensions`.
-3. Enable **Developer mode** (top-right toggle).
-4. Click **Load unpacked** and select the project folder.
-5. Pin the extension for quick access from the toolbar.
+1. **Get your own Personio attendance URL** — log into Personio, go to the page where you enter your working hours (your **attendance / timesheet** page, the one showing the ⚠️ alert icons this extension looks for), and copy the full URL from your browser's address bar. It'll look like `https://<your-company>.personio.com/attendance/employee/<your-employee-id>`. It's specific to *you* (your company's subdomain + your own employee ID).
+2. Clone or download this repo.
+3. Open [`config.js`](./config.js) and paste your URL as the value of `TARGET_URL`, replacing the placeholder that's there.
+4. Open Chrome and go to `chrome://extensions`.
+5. Enable **Developer mode** (top-right toggle).
+6. Click **Load unpacked** and select the project folder.
+7. Pin the extension for quick access from the toolbar.
+
+> 💡 If you'd rather not edit `config.js` at all, skip step 3 and use **Run on this tab** instead (see Usage below) — it works directly off whatever attendance page you already have open, with no configuration needed.
 
 ## ⚙️ Configuration
 
@@ -25,7 +29,7 @@ All settings live in [`config.js`](./config.js) — edit and reload the extensio
 
 | Setting | What it controls |
 | --- | --- |
-| `TARGET_URL` | The Personio attendance URL opened when you click **Run**. Update the employee ID / subdomain to match your account. |
+| `TARGET_URL` | The Personio attendance URL opened when you click **Run**. See step 1 in Installation above for how to get your own. |
 | `DRY_RUN` | `true` fills fields but never clicks Save — great for testing. Set to `false` once you trust the results. |
 | `SELECTORS.PERIODS` | The default start/end times typed into each period (e.g. `900` = 09:00). Add/remove entries to match your work schedule (e.g. split shifts). |
 | `JITTER_MAX_MINUTES` | Randomizes each typed time by up to this many minutes, so entries don't look robotic. |
