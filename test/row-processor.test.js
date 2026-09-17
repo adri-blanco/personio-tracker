@@ -54,7 +54,7 @@ function makePeriodField(testId) {
 // panel containing the 4 period fields plus Save/Cancel buttons - mirroring
 // the real Personio page where the panel is a separate DOM subtree from the
 // row, appended asynchronously after the click.
-function buildRow({ swapFieldsAfterFirstPeriod = false, timeOff = false } = {}) {
+function buildRow({ swapFieldsAfterFirstPeriod = false, timeOff = false, saveRemovalDelayMs = null } = {}) {
   document.body.innerHTML = "";
 
   const row = document.createElement("div");
@@ -85,6 +85,17 @@ function buildRow({ swapFieldsAfterFirstPeriod = false, timeOff = false } = {}) 
     panel.appendChild(cancelButton);
 
     document.body.appendChild(panel);
+
+    // Mirrors the real page: a real Save doesn't remove the panel from the
+    // DOM synchronously - it exits via an animation first (see the "waits
+    // for the panel to actually leave the DOM after Save" test below). Off
+    // by default so existing tests can still inspect the panel right after
+    // saveRow() resolves.
+    if (saveRemovalDelayMs !== null) {
+      saveButton.addEventListener("click", () => {
+        setTimeout(() => panel.remove(), saveRemovalDelayMs);
+      });
+    }
 
     if (swapFieldsAfterFirstPeriod) {
       // Simulate the framework re-rendering and swapping in brand new DOM
@@ -387,6 +398,44 @@ describe("saveRow", () => {
       expect(hoursEl.textContent).toBe(hours);
       expect(minutesEl.textContent).toBe(minutes);
     });
+  });
+
+  test("waits for the panel to actually leave the DOM after Save before returning (regression for a later batch-save reopen racing this row's close animation)", async () => {
+    // Simulates the live page's exit animation with a much shorter delay so
+    // the test stays fast, while still exercising the same race: if
+    // saveRow() returned as soon as Save was *clicked* (instead of waiting
+    // for the DOM to actually reflect it), content/automation.js's fixed
+    // BETWEEN_SAVES_DELAY_MS could reopen the next queued row before this
+    // one finished closing.
+    const { icon } = buildRow({ saveRemovalDelayMs: 30 });
+
+    const seenInputs = new Set();
+    const { filled, startInput } = await fillRow({
+      icon,
+      seenInputs,
+      selectors: SELECTORS,
+      timeouts: TIMEOUTS,
+      maxRowAncestorLevels: 8,
+      jitterMaxMinutes: 0,
+      randomFn: () => 0,
+    });
+
+    const before = Date.now();
+    await saveRow({
+      icon,
+      filled,
+      startInput,
+      seenInputs,
+      selectors: SELECTORS,
+      timeouts: TIMEOUTS,
+      maxRowAncestorLevels: 8,
+    });
+    const elapsed = Date.now() - before;
+
+    // Must have actually waited for the ~30ms removal, not resolved the
+    // instant Save was clicked.
+    expect(elapsed).toBeGreaterThanOrEqual(25);
+    expect(document.querySelector('[data-test-id="periods.0.start"]')).toBeNull();
   });
 
   test("throws if the Save button can't be found", async () => {
